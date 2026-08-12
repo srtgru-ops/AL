@@ -73,7 +73,7 @@
 
     <div class="content">
       <section class="hero">
-        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول يتم إرسال إشعار للمتقدم تلقائياً.</p></div>
+        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول يتم إرسال إشعار إلى منسق الفرصة تلقائياً.</p></div>
         <div class="hero-mark">✦</div>
       </section>
 
@@ -87,11 +87,11 @@
       <section class="panel" id="requestsPanel">
         <div class="panel-head">
           <h3 id="panelTitle">جميع الطلبات</h3>
-          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم المتقدم أو الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button></div>
+          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم منسق الفرصة أو اسم الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button></div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>اسم المتقدم</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+            <thead><tr><th>#</th><th>منسق الفرصة</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
             <tbody id="rowsBody"><tr><td colspan="7" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
           </table>
         </div>
@@ -127,8 +127,19 @@
 
   async function api(action, payload={}){
     if(API_URL.includes('PUT_YOUR')) throw new Error('يلزم وضع رابط Apps Script داخل API_URL أولاً.');
-    const res = await fetch(API_URL, {method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...payload})});
-    const data = await res.json();
+    const url = new URL(API_URL);
+    url.searchParams.set('action', action);
+    Object.entries(payload).forEach(([k,v]) => url.searchParams.set(k, v));
+    url.searchParams.set('_', Date.now());
+
+    const res = await fetch(url.toString(), {method:'GET', redirect:'follow', cache:'no-store'});
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      throw new Error('تعذر قراءة رد Apps Script. تأكد من إعادة نشر آخر نسخة وأن الوصول مضبوط على «أي شخص».');
+    }
     if(!data.ok) throw new Error(data.error || 'حدث خطأ غير متوقع');
     return data;
   }
@@ -154,7 +165,7 @@
 
   function filteredRows(){
     const q=$('#searchInput').value.trim().toLowerCase();
-    return allRows.filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.applicantName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
+    return allRows.filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
   }
 
   function renderRows(){
@@ -163,7 +174,7 @@
     $('#rowsBody').innerHTML=rows.map((r,i)=>{
       const st=normStatus(r.status);
       return `<tr>
-        <td>${i+1}</td><td><b>${esc(r.applicantName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
+        <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
         <td><span class="badge ${st}">${statusArabic(st)}</span></td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
