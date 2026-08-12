@@ -122,8 +122,8 @@
 
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-  const normStatus = s => ({'قيد المراجعة':'pending','مقبول':'accepted','مرفوض':'rejected','منتهٍ':'completed','منتهي':'completed'}[String(s).trim()] || 'pending');
-  const statusArabic = s => ({pending:'قيد المراجعة',accepted:'مقبول',rejected:'مرفوض',completed:'منتهٍ'}[s] || 'قيد المراجعة');
+  const normStatus = s => ({'قيد المراجعة':'pending','مقبول':'accepted','مرفوض':'rejected','منتهٍ':'completed','منتهي':'completed','منتهية':'completed'}[String(s).trim()] || 'pending');
+  const statusArabic = s => ({pending:'قيد المراجعة',accepted:'مقبول',rejected:'مرفوض',completed:'منتهية'}[s] || 'قيد المراجعة');
 
   function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3200); }
   function setLoading(on){ document.body.classList.toggle('loading',on); }
