@@ -111,76 +111,117 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  // ضع رابط Web App الخاص بـ Google Apps Script هنا بعد نشره.
   const API_URL = 'https://script.google.com/macros/s/AKfycbygRl67I_58tfqbjtcmQn5olqQ8R3pQ-UuwSMUUc3d-yy5R3jkqFWOc71jN1Q6JeD-u/exec';
+  const AUTO_REFRESH_MS = 20000; // تحديث تلقائي كل 20 ثانية
   let allRows = [];
   let activeFilter = 'all';
   let selectedRow = null;
+  let autoRefreshTimer = null;
+  let requestInProgress = false;
 
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const normStatus = s => ({'قيد المراجعة':'pending','مقبول':'accepted','مرفوض':'rejected','منتهٍ':'completed','منتهي':'completed'}[String(s).trim()] || 'pending');
   const statusArabic = s => ({pending:'قيد المراجعة',accepted:'مقبول',rejected:'مرفوض',completed:'منتهٍ'}[s] || 'قيد المراجعة');
 
-  function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3200); }
+  function showToast(msg){
+    const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(showToast._timer); showToast._timer=setTimeout(()=>t.classList.remove('show'),3500);
+  }
   function setLoading(on){ document.body.classList.toggle('loading',on); }
 
-  async function api(action, payload={}){
-    if(API_URL.includes('PUT_YOUR')) throw new Error('يلزم وضع رابط Apps Script داخل API_URL أولاً.');
-    const url = new URL(API_URL);
-    url.searchParams.set('action', action);
-    Object.entries(payload).forEach(([k,v]) => url.searchParams.set(k, v));
-    url.searchParams.set('_', Date.now());
+  // JSONP: يتجاوز مشكلة CORS/HTML التي قد تظهر بين GitHub Pages و Google Apps Script.
+  function api(action, payload={}){
+    return new Promise((resolve,reject)=>{
+      const callbackName='utVolunteerCb_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+      const script=document.createElement('script');
+      const url=new URL(API_URL);
+      url.searchParams.set('action',action);
+      Object.entries(payload).forEach(([k,v])=>url.searchParams.set(k,String(v)));
+      url.searchParams.set('callback',callbackName);
+      url.searchParams.set('_',Date.now());
 
-    const res = await fetch(url.toString(), {method:'GET', redirect:'follow', cache:'no-store'});
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (_) {
-      throw new Error('تعذر قراءة رد Apps Script. تأكد من إعادة نشر آخر نسخة وأن الوصول مضبوط على «أي شخص».');
-    }
-    if(!data.ok) throw new Error(data.error || 'حدث خطأ غير متوقع');
-    return data;
+      let settled=false;
+      const cleanup=()=>{
+        if(script.parentNode) script.parentNode.removeChild(script);
+        try{ delete window[callbackName]; }catch(_){ window[callbackName]=undefined; }
+      };
+      const timer=setTimeout(()=>{
+        if(settled)return; settled=true; cleanup();
+        reject(new Error('تأخر اتصال Apps Script. سيتم المحاولة تلقائياً في التحديث القادم.'));
+      },15000);
+
+      window[callbackName]=(data)=>{
+        if(settled)return; settled=true; clearTimeout(timer); cleanup();
+        if(!data || data.ok!==true) reject(new Error((data&&data.error)||'تعذر تنفيذ الطلب.'));
+        else resolve(data);
+      };
+      script.onerror=()=>{
+        if(settled)return; settled=true; clearTimeout(timer); cleanup();
+        reject(new Error('تعذر الاتصال بـ Apps Script. تأكد من أن النشر متاح لـ «أي شخص».'));
+      };
+      script.src=url.toString();
+      document.head.appendChild(script);
+    });
   }
 
-  async function loadData(){
-    setLoading(true);
+  async function loadData({silent=false}={}){
+    if(requestInProgress) return;
+    requestInProgress=true;
+    if(!silent) setLoading(true);
     try{
-      const data = await api('list');
-      allRows = data.rows || [];
+      const data=await api('list');
+      allRows=data.rows||[];
       updateStats(); renderRows();
-      $('#lastSync').textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});
+      const now=new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      $('#lastSync').textContent='آخر تحديث: '+now+' • تلقائي كل 20 ثانية';
     }catch(e){
-      $('#rowsBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
-      showToast(e.message);
-    }finally{setLoading(false)}
+      if(!silent){
+        $('#rowsBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+        showToast(e.message);
+      }
+    }finally{
+      requestInProgress=false;
+      if(!silent) setLoading(false);
+    }
   }
 
   function updateStats(){
     const c={pending:0,accepted:0,rejected:0,completed:0};
     allRows.forEach(r=>c[normStatus(r.status)]++);
-    $('#totalCount').textContent=allRows.length; $('#pendingCount').textContent=c.pending; $('#acceptedCount').textContent=c.accepted; $('#rejectedCount').textContent=c.rejected; $('#sidePending').textContent=c.pending;
+    $('#totalCount').textContent=allRows.length;
+    $('#pendingCount').textContent=c.pending;
+    $('#acceptedCount').textContent=c.accepted;
+    $('#rejectedCount').textContent=c.rejected;
+    $('#sidePending').textContent=c.pending;
   }
 
   function filteredRows(){
     const q=$('#searchInput').value.trim().toLowerCase();
-    return allRows.filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
+    return allRows.filter(r =>
+      (activeFilter==='all' || normStatus(r.status)===activeFilter) &&
+      (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q))
+    );
   }
 
   function renderRows(){
     const rows=filteredRows();
-    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
+    if(!rows.length){ $('#rowsBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد طلبات مطابقة.</td></tr>'; return; }
     $('#rowsBody').innerHTML=rows.map((r,i)=>{
       const st=normStatus(r.status);
       return `<tr>
-        <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
+        <td>${i+1}</td>
+        <td><b>${esc(r.coordinatorName||'—')}</b></td>
+        <td>${esc(r.opportunityName||'—')}</td>
+        <td>${esc(r.email||'—')}</td>
+        <td>${esc(r.timestamp||'—')}</td>
         <td><span class="badge ${st}">${statusArabic(st)}</span></td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
           ${st==='pending'?`<button class="btn btn-primary" onclick="changeStatus(${r.rowNumber},'مقبول')">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
           ${st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${r.rowNumber})">إنهاء الفرصة</button>`:''}
-        </div></td></tr>`;
+        </div></td>
+      </tr>`;
     }).join('');
   }
 
@@ -189,7 +230,11 @@
     const pairs=Object.entries(selectedRow.fields||{});
     $('#detailGrid').innerHTML=pairs.map(([k,v])=>`<div class="detail"><b>${esc(k)}</b><span>${esc(v||'—')}</span></div>`).join('');
     const st=normStatus(selectedRow.status);
-    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="changeStatus(${rowNumber},'مقبول',true)">قبول وإرسال الإيميل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${rowNumber},true)">إنهاء الفرصة وإرسال المتطلبات</button>`:'');
+    $('#modalActions').innerHTML=(st==='pending'
+      ? `<button class="btn btn-primary" onclick="changeStatus(${rowNumber},'مقبول',true)">قبول وإرسال الإيميل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`
+      : st==='accepted'
+        ? `<button class="btn btn-gold" onclick="completeOpportunity(${rowNumber},true)">إنهاء الفرصة وإرسال المتطلبات</button>`
+        : '');
     $('#modalBackdrop').classList.add('show');
   }
   function closeModal(){ $('#modalBackdrop').classList.remove('show'); selectedRow=null; }
@@ -197,20 +242,50 @@
   async function changeStatus(rowNumber,status,close=false){
     if(!confirm(`هل تريد تغيير حالة الطلب إلى «${status}»؟`)) return;
     setLoading(true);
-    try{ const d=await api('setStatus',{rowNumber,status}); showToast(d.message||'تم تحديث الطلب.'); if(close)closeModal(); await loadData(); }
-    catch(e){showToast(e.message)} finally{setLoading(false)}
-  }
-  async function completeOpportunity(rowNumber,close=false){
-    if(!confirm('سيتم إنهاء الفرصة وإرسال متطلبات الإنهاء للمتقدم. هل تريد المتابعة؟')) return;
-    setLoading(true);
-    try{ const d=await api('complete',{rowNumber}); showToast(d.message||'تم إنهاء الفرصة.'); if(close)closeModal(); await loadData(); }
-    catch(e){showToast(e.message)} finally{setLoading(false)}
+    try{
+      const d=await api('setStatus',{rowNumber,status});
+      showToast(d.message||'تم تحديث الطلب.');
+      if(close) closeModal();
+      await loadData({silent:true});
+    }catch(e){ showToast(e.message); }
+    finally{ setLoading(false); }
   }
 
-  document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
-  $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
-  $('#reloadTop').addEventListener('click',loadData); $('#reloadSide').addEventListener('click',loadData); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+  async function completeOpportunity(rowNumber,close=false){
+    if(!confirm('سيتم إنهاء الفرصة وإرسال متطلبات الإنهاء إلى منسق الفرصة. هل تريد المتابعة؟')) return;
+    setLoading(true);
+    try{
+      const d=await api('complete',{rowNumber});
+      showToast(d.message||'تم إنهاء الفرصة.');
+      if(close) closeModal();
+      await loadData({silent:true});
+    }catch(e){ showToast(e.message); }
+    finally{ setLoading(false); }
+  }
+
+  function startAutoRefresh(){
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer=setInterval(()=>{
+      if(document.visibilityState==='visible' && !requestInProgress) loadData({silent:true});
+    },AUTO_REFRESH_MS);
+  }
+
+  document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); activeFilter=b.dataset.filter;
+    $('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim(); renderRows();
+    document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});
+  }));
+  $('#searchInput').addEventListener('input',renderRows);
+  $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
+  $('#reloadTop').addEventListener('click',()=>loadData());
+  $('#reloadSide').addEventListener('click',()=>loadData());
+  $('#closeModal').addEventListener('click',closeModal);
+  $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') loadData({silent:true}); });
+
   loadData();
+  startAutoRefresh();
 </script>
 </body>
 </html>
