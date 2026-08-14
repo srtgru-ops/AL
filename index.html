@@ -40,7 +40,7 @@
     .footer-note{margin:18px 4px;color:var(--muted);font-size:12px;text-align:center}
     .toast{position:fixed;left:24px;bottom:24px;background:#19241e;color:white;padding:14px 18px;border-radius:14px;box-shadow:var(--shadow);display:none;z-index:50}.toast.show{display:block}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:center;justify-content:center;padding:20px;z-index:40}.modal-backdrop.show{display:flex}.modal{background:white;border-radius:22px;max-width:760px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.2)}.modal-head{padding:20px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.modal-body{padding:22px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.detail{background:#f8faf9;border:1px solid var(--line);border-radius:14px;padding:13px}.detail b{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.modal-actions{padding:18px 22px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-    .loading{opacity:.55;pointer-events:none}
+    .form-field{display:grid;gap:7px;margin-bottom:15px}.form-field label{font-size:13px;font-weight:bold;color:#46514b}.form-field input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 13px;outline:none;background:#fafcfb}.form-field input:focus{border-color:#8ab9a1;box-shadow:0 0 0 3px #e8f4ed}.hint{font-size:12px;color:var(--muted);line-height:1.7}.loading{opacity:.55;pointer-events:none}
     @media(max-width:1000px){.app{grid-template-columns:1fr}aside{height:auto;position:static}nav{grid-template-columns:repeat(3,1fr)}.brand-side{justify-content:center}.stats{grid-template-columns:1fr 1fr}header{position:static}}
     @media(max-width:650px){.content{padding:16px}header{padding:14px 16px}.title-wrap p{display:none}.stats{grid-template-columns:1fr}.hero{align-items:flex-start}.hero-mark{display:none}.detail-grid{grid-template-columns:1fr}nav{grid-template-columns:1fr 1fr}.search{min-width:100%;width:100%}}
   </style>
@@ -73,7 +73,7 @@
 
     <div class="content">
       <section class="hero">
-        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول يتم إرسال إشعار إلى منسق الفرصة تلقائياً.</p></div>
+        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول تُدخل رابط التسجيل وتاريخ انتهاء الفرصة ليصل الرابط للمنسق مباشرة، ثم يتولى النظام متابعة الإنهاء تلقائياً.</p></div>
         <div class="hero-mark">✦</div>
       </section>
 
@@ -91,8 +91,8 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>منسق الفرصة</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
-            <tbody id="rowsBody"><tr><td colspan="7" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
+            <thead><tr><th>#</th><th>منسق الفرصة</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>رابط التسجيل</th><th>تاريخ الانتهاء</th><th>الإجراءات</th></tr></thead>
+            <tbody id="rowsBody"><tr><td colspan="9" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -108,6 +108,17 @@
     <div class="modal-actions" id="modalActions"></div>
   </div>
 </div>
+<div class="modal-backdrop" id="acceptBackdrop">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head"><h3 style="margin:0;color:var(--ut-green)">اعتماد الفرصة وإرسال رابط التسجيل</h3><button class="btn btn-soft" id="closeAccept">إغلاق</button></div>
+    <div class="modal-body">
+      <div class="form-field"><label for="registrationUrl">رابط التسجيل في الفرصة</label><input type="url" id="registrationUrl" placeholder="https://..." autocomplete="off"><div class="hint">سيصل هذا الرابط للمنسق داخل رسالة القبول.</div></div>
+      <div class="form-field"><label for="opportunityEndDate">تاريخ انتهاء الفرصة</label><input type="date" id="opportunityEndDate"><div class="hint">بعد انقضاء هذا التاريخ سيرسل النظام ملف المتطلبات تلقائياً عند تفعيل الأتمتة وإضافة ملف Word.</div></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-soft" id="cancelAccept">إلغاء</button><button class="btn btn-primary" id="confirmAccept">قبول وإرسال الرابط</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -116,6 +127,8 @@
   let allRows = [];
   let activeFilter = 'all';
   let selectedRow = null;
+  let acceptanceRowNumber = null;
+  let closeDetailsAfterAccept = false;
   const AUTO_REFRESH_MS = 20000;
   let autoRefreshTimer = null;
   let requestInProgress = false;
@@ -161,7 +174,7 @@
     }catch(e){
       // لا نمسح البيانات القديمة إذا تعذر الاتصال مؤقتاً.
       if(!allRows.length && !silent){
-        $('#rowsBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+        $('#rowsBody').innerHTML=`<tr><td colspan="9" class="empty">${esc(e.message)}</td></tr>`;
       }
       if(!silent) showToast(e.message);
       $('#lastSync').textContent = allRows.length ? 'تعذر التحديث مؤقتاً • ستتم المحاولة تلقائياً' : 'تعذر الاتصال بـ Apps Script';
@@ -184,16 +197,18 @@
 
   function renderRows(){
     const rows=filteredRows();
-    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
+    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="9" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
     $('#rowsBody').innerHTML=rows.map((r,i)=>{
       const st=normStatus(r.status);
       return `<tr>
         <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
         <td><span class="badge ${st}">${statusArabic(st)}</span></td>
+        <td>${st==='pending' ? `<input class="search" style="min-width:210px;width:100%" type="url" id="reg-${r.rowNumber}" value="${esc(r.registrationUrl||'')}" placeholder="https://...">` : (r.registrationUrl ? `<a href="${esc(r.registrationUrl)}" target="_blank">فتح الرابط</a>` : '—')}</td>
+        <td>${st==='pending' ? `<input class="search" style="min-width:145px;width:100%" type="date" id="end-${r.rowNumber}" value="${esc(r.endDate||'')}">` : esc(r.endDate||'—')}</td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
-          ${st==='pending'?`<button class="btn btn-primary" onclick="changeStatus(${r.rowNumber},'مقبول')">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
-          ${st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${r.rowNumber})">إنهاء الفرصة</button>`:''}
+          ${st==='pending'?`<button class="btn btn-primary" onclick="acceptFromRow(${r.rowNumber})">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
+          ${st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${r.rowNumber})">إنهاء الآن</button>`:''}
         </div></td></tr>`;
     }).join('');
   }
@@ -203,12 +218,61 @@
     const pairs=Object.entries(selectedRow.fields||{});
     $('#detailGrid').innerHTML=pairs.map(([k,v])=>`<div class="detail"><b>${esc(k)}</b><span>${esc(v||'—')}</span></div>`).join('');
     const st=normStatus(selectedRow.status);
-    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="changeStatus(${rowNumber},'مقبول',true)">قبول وإرسال الإيميل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${rowNumber},true)">إنهاء الفرصة وإرسال المتطلبات</button>`:'');
+    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${rowNumber},true)">إنهاء الآن وإرسال المتطلبات</button>`:'');
     $('#modalBackdrop').classList.add('show');
   }
   function closeModal(){ $('#modalBackdrop').classList.remove('show'); selectedRow=null; }
 
+  function openAcceptance(rowNumber,closeDetails=false){
+    const row=allRows.find(r=>r.rowNumber===rowNumber);
+    acceptanceRowNumber=rowNumber;
+    closeDetailsAfterAccept=closeDetails;
+    $('#registrationUrl').value=row?.registrationUrl||'';
+    $('#opportunityEndDate').value=row?.endDate||'';
+    $('#acceptBackdrop').classList.add('show');
+    setTimeout(()=>$('#registrationUrl').focus(),100);
+  }
+
+  function closeAcceptance(){
+    $('#acceptBackdrop').classList.remove('show');
+    acceptanceRowNumber=null;
+    closeDetailsAfterAccept=false;
+  }
+
+  async function acceptFromRow(rowNumber){
+    const registrationUrl = ($('#reg-'+rowNumber)?.value || '').trim();
+    const endDate = $('#end-'+rowNumber)?.value || '';
+    if(!registrationUrl){showToast('أدخل رابط التسجيل أولاً.'); $('#reg-'+rowNumber)?.focus(); return;}
+    if(!/^https?:\/\//i.test(registrationUrl)){showToast('رابط التسجيل يجب أن يبدأ بـ https:// أو http://'); $('#reg-'+rowNumber)?.focus(); return;}
+    if(!endDate){showToast('حدد تاريخ انتهاء الفرصة أولاً.'); $('#end-'+rowNumber)?.focus(); return;}
+    if(!confirm('هل تريد قبول الفرصة وإرسال رابط التسجيل للمنسق؟')) return;
+    setLoading(true);
+    try{
+      const d=await api('setStatus',{rowNumber,status:'مقبول',registrationUrl,endDate});
+      showToast(d.message||'تم قبول الفرصة وإرسال رابط التسجيل.');
+      await loadData({silent:true});
+    }catch(e){showToast(e.message)}finally{setLoading(false)}
+  }
+
+  async function confirmAcceptance(){
+    const rowNumber=acceptanceRowNumber;
+    const registrationUrl=$('#registrationUrl').value.trim();
+    const endDate=$('#opportunityEndDate').value;
+    if(!registrationUrl){showToast('أدخل رابط التسجيل أولاً.');return;}
+    if(!/^https?:\/\//i.test(registrationUrl)){showToast('رابط التسجيل يجب أن يبدأ بـ https:// أو http://');return;}
+    if(!endDate){showToast('حدد تاريخ انتهاء الفرصة.');return;}
+    setLoading(true);
+    try{
+      const d=await api('setStatus',{rowNumber,status:'مقبول',registrationUrl,endDate});
+      showToast(d.message||'تم قبول الفرصة.');
+      closeAcceptance();
+      if(closeDetailsAfterAccept) closeModal();
+      await loadData({silent:true});
+    }catch(e){showToast(e.message)}finally{setLoading(false)}
+  }
+
   async function changeStatus(rowNumber,status,close=false){
+    if(status==='مقبول'){openAcceptance(rowNumber,close);return;}
     if(!confirm(`هل تريد تغيير حالة الطلب إلى «${status}»؟`)) return;
     setLoading(true);
     try{ const d=await api('setStatus',{rowNumber,status}); showToast(d.message||'تم تحديث الطلب.'); if(close)closeModal(); await loadData({silent:true}); }
@@ -224,6 +288,7 @@
   document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
   $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
   $('#reloadTop').addEventListener('click',()=>loadData()); $('#reloadSide').addEventListener('click',()=>loadData()); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+  $('#closeAccept').addEventListener('click',closeAcceptance); $('#cancelAccept').addEventListener('click',closeAcceptance); $('#confirmAccept').addEventListener('click',confirmAcceptance); $('#acceptBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAcceptance()});
 
   function startAutoRefresh(){
     clearInterval(autoRefreshTimer);
