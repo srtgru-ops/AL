@@ -134,8 +134,8 @@
 
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-  const normStatus = s => ({'قيد المراجعة':'pending','مقبول':'accepted','مرفوض':'rejected','منتهٍ':'completed','منتهي':'completed','منتهية':'completed'}[String(s).trim()] || 'pending');
-  const statusArabic = s => ({pending:'قيد المراجعة',accepted:'مقبول',rejected:'مرفوض',completed:'منتهية'}[s] || 'قيد المراجعة');
+  const normStatus = s => ({'قيد المراجعة':'pending','مقبول':'accepted','بانتظار متطلبات الإنهاء':'accepted','مرفوض':'rejected','منتهٍ':'completed','منتهي':'completed','منتهية':'completed'}[String(s).trim()] || 'pending');
+  const statusArabic = (s, raw='') => String(raw||'').trim() || ({pending:'قيد المراجعة',accepted:'مقبول',rejected:'مرفوض',completed:'منتهية'}[s] || 'قيد المراجعة');
 
   function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3200); }
   function setLoading(on){ document.body.classList.toggle('loading',on); }
@@ -201,10 +201,12 @@
       const st=normStatus(r.status);
       return `<tr>
         <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
-        <td><span class="badge ${st}">${statusArabic(st)}</span></td>
+        <td><span class="badge ${st}">${esc(statusArabic(st,r.status))}</span></td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
           ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
+          ${String(r.status||'').trim()==='مقبول'?`<button class="btn btn-primary" onclick="sendRequirements(${r.rowNumber})">إرسال ملف الإنهاء</button>`:''}
+          ${String(r.status||'').trim()==='بانتظار متطلبات الإنهاء'?`<button class="btn btn-primary" onclick="finalizeOpportunity(${r.rowNumber})">اعتماد الإنهاء</button>`:''}
         </div></td></tr>`;
     }).join('');
   }
@@ -214,7 +216,11 @@
     const pairs=Object.entries(selectedRow.fields||{});
     $('#detailGrid').innerHTML=pairs.map(([k,v])=>`<div class="detail"><b>${esc(k)}</b><span>${esc(v||'—')}</span></div>`).join('');
     const st=normStatus(selectedRow.status);
-    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:'');
+    let modalButtons='';
+    if(st==='pending') modalButtons=`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`;
+    if(String(selectedRow.status||'').trim()==='مقبول') modalButtons=`<button class="btn btn-primary" onclick="sendRequirements(${rowNumber},true)">إرسال ملف الإنهاء</button>`;
+    if(String(selectedRow.status||'').trim()==='بانتظار متطلبات الإنهاء') modalButtons=`<button class="btn btn-primary" onclick="finalizeOpportunity(${rowNumber},true)">اعتماد الإنهاء</button>`;
+    $('#modalActions').innerHTML=modalButtons;
     $('#modalBackdrop').classList.add('show');
   }
   function closeModal(){ $('#modalBackdrop').classList.remove('show'); selectedRow=null; }
@@ -223,7 +229,7 @@
     const row=allRows.find(r=>r.rowNumber===rowNumber);
     acceptanceRowNumber=rowNumber;
     closeDetailsAfterAccept=closeDetails;
-    $('#registrationUrl').value=row?.registrationUrl||'';
+    $('#registrationUrl').value=row?.registrationLink||'';
     $('#acceptBackdrop').classList.add('show');
     setTimeout(()=>$('#registrationUrl').focus(),100);
   }
@@ -257,6 +263,28 @@
     catch(e){showToast(e.message)} finally{setLoading(false)}
   }
 
+
+  async function sendRequirements(rowNumber,close=false){
+    if(!confirm('هل تريد إرسال ملف متطلبات إنهاء الفرصة إلى مقدم الطلب؟')) return;
+    setLoading(true);
+    try{
+      const d=await api('sendRequirements',{rowNumber});
+      showToast(d.message||'تم إرسال ملف الإنهاء.');
+      if(close) closeModal();
+      await loadData({silent:true});
+    }catch(e){showToast(e.message)}finally{setLoading(false)}
+  }
+
+  async function finalizeOpportunity(rowNumber,close=false){
+    if(!confirm('هل استلمت ملف المتطلبات مكتملًا وتريد اعتماد انتهاء الفرصة؟')) return;
+    setLoading(true);
+    try{
+      const d=await api('finalize',{rowNumber});
+      showToast(d.message||'تم اعتماد انتهاء الفرصة.');
+      if(close) closeModal();
+      await loadData({silent:true});
+    }catch(e){showToast(e.message)}finally{setLoading(false)}
+  }
 
   document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
   $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
