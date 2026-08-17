@@ -57,6 +57,7 @@
       <button class="nav-btn" data-filter="pending">طلبات جديدة <span class="pill" id="sidePending">0</span></button>
       <button class="nav-btn" data-filter="accepted">المقبولة <span>✓</span></button>
       <button class="nav-btn" data-filter="waiting">بانتظار الإنهاء <span>⌛</span></button>
+      <button class="nav-btn" id="filesNav">استلام الملفات <span class="pill" id="sideFiles">0</span></button>
       <button class="nav-btn" data-filter="completed">المنتهية <span>▣</span></button>
       <button class="nav-btn" data-filter="rejected">المرفوضة <span>×</span></button>
       <button class="nav-btn" id="reloadSide">تحديث البيانات <span>↻</span></button>
@@ -74,7 +75,7 @@
 
     <div class="content">
       <section class="hero">
-        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول تُدخل رابط التسجيل ليصل مباشرة إلى مقدم الطلب عبر البريد الإلكتروني. وبعد تنفيذ الفرصة يمكنك إرسال ملف متطلبات الإنهاء ثم اعتماد الإنهاء بعد استلامه مكتملًا.</p></div>
+        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول تُدخل رابط التسجيل ليصل مباشرة إلى مقدم الطلب عبر البريد الإلكتروني. وبعد تنفيذ الفرصة يمكنك إرسال ملف متطلبات الإنهاء، ثم متابعة الملفات المرفوعة من قسم «استلام الملفات» واعتماد انتهاء الفرصة بعد مراجعتها.</p></div>
         <div class="hero-mark">✦</div>
       </section>
 
@@ -94,6 +95,23 @@
           <table>
             <thead><tr><th>#</th><th>مقدم الطلب</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
             <tbody id="rowsBody"><tr><td colspan="7" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" id="filesPanel" style="display:none;margin-top:0">
+        <div class="panel-head">
+          <h3>استلام ملفات الإنهاء</h3>
+          <div class="filters">
+            <input class="search" id="filesSearch" placeholder="ابحث بالاسم أو الفرصة أو البريد...">
+            <button class="btn btn-soft" id="clearFilesSearch">مسح</button>
+            <button class="btn btn-soft" id="reloadFiles">تحديث الملفات</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>المستفيد</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ الرفع</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+            <tbody id="filesBody"><tr><td colspan="7" class="empty">جارٍ تحميل الملفات...</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -124,7 +142,10 @@
 <script>
   // ضع رابط Web App الخاص بـ Google Apps Script هنا بعد نشره.
   const API_URL = 'https://script.google.com/macros/s/AKfycbxNY_Vdtxo6eNgUpwLHshX-srybhiRYdOaaCd3hujlN10bEQGZEMaPAV1Tr_0Ni44XxEw/exec';
+  const FILES_API_URL = 'https://script.google.com/macros/s/AKfycbxPp7X37gkv0uyGegsJutoTg68rv3FRi5I8vsFk368Ewbe07X8ICMSUyD4K51aYInaQyg/exec';
   let allRows = [];
+  let fileRows = [];
+  let currentView = 'requests';
   let activeFilter = 'all';
   let selectedRow = null;
   let acceptanceRowNumber = null;
@@ -158,6 +179,66 @@
     }
     if(!data.ok) throw new Error(data.error || 'حدث خطأ غير متوقع');
     return data;
+  }
+
+  async function filesApi(action, payload={}){
+    const url = new URL(FILES_API_URL);
+    url.searchParams.set('action', action);
+    Object.entries(payload).forEach(([k,v]) => url.searchParams.set(k, v));
+    url.searchParams.set('_', Date.now());
+    const res = await fetch(url.toString(), {method:'GET', redirect:'follow', cache:'no-store'});
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch (_) { throw new Error('تعذر قراءة رد نظام استلام الملفات.'); }
+    if(!data.ok) throw new Error(data.error || 'حدث خطأ في نظام استلام الملفات');
+    return data;
+  }
+
+  async function loadFiles({silent=false}={}){
+    if(!silent) setLoading(true);
+    try{
+      const data = await filesApi('list');
+      fileRows = Array.isArray(data.rows) ? data.rows : [];
+      $('#sideFiles').textContent = data.pendingCount ?? fileRows.filter(r=>String(r.status||'').trim()!=='تم إنهاء الفرصة').length;
+      renderFiles();
+    }catch(e){
+      if(!silent) showToast(e.message);
+      if(!fileRows.length) $('#filesBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+    }finally{ if(!silent) setLoading(false); }
+  }
+
+  function renderFiles(){
+    const q=($('#filesSearch')?.value||'').trim().toLowerCase();
+    const rows=fileRows.filter(r=>!q || [r.name,r.opportunity,r.email,r.timestamp,r.status].join(' ').toLowerCase().includes(q));
+    if(!rows.length){ $('#filesBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد ملفات مرفوعة حالياً.</td></tr>'; return; }
+    $('#filesBody').innerHTML=rows.map((r,i)=>{
+      const done=String(r.status||'').trim()==='تم إنهاء الفرصة';
+      const status=done?'تم إنهاء الفرصة':'بانتظار المراجعة';
+      return `<tr>
+        <td>${i+1}</td>
+        <td><b>${esc(r.name||'—')}</b></td>
+        <td>${esc(r.opportunity||'—')}</td>
+        <td>${esc(r.email||'—')}</td>
+        <td>${esc(r.timestamp||'—')}</td>
+        <td><span class="badge ${done?'completed':'waiting'}">${esc(status)}</span></td>
+        <td><div class="actions">
+          ${r.fileUrl?`<a class="btn btn-soft" href="${esc(r.fileUrl)}" target="_blank" rel="noopener">عرض الملف</a>`:''}
+          ${!done?`<button class="btn btn-primary" onclick="finalizeUploadedFile(${r.rowNumber})">إنهاء الفرصة</button>`:''}
+        </div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function finalizeUploadedFile(rowNumber){
+    if(!confirm('هل راجعت الملف وتريد اعتماد انتهاء الفرصة وإرسال إشعار للمستفيد؟')) return;
+    setLoading(true);
+    try{
+      const d=await filesApi('finalize',{rowNumber});
+      showToast(d.message||'تم إنهاء الفرصة وإرسال الإشعار.');
+      await loadFiles({silent:true});
+    }catch(e){ showToast(e.message); }
+    finally{ setLoading(false); }
   }
 
   async function loadData({silent=false}={}){
@@ -207,7 +288,7 @@
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
           ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
           ${String(r.status||'').trim()==='مقبول'?`<button class="btn btn-primary" onclick="sendRequirements(${r.rowNumber})">إرسال ملف الإنهاء</button>`:''}
-          ${String(r.status||'').trim()==='بانتظار متطلبات الإنهاء'?`<button class="btn btn-primary" onclick="finalizeOpportunity(${r.rowNumber})">اعتماد الإنهاء</button>`:''}
+          ${String(r.status||'').trim()==='بانتظار متطلبات الإنهاء'?`<span class="badge waiting">بانتظار رفع الملف</span>`:''}
         </div></td></tr>`;
     }).join('');
   }
@@ -220,7 +301,7 @@
     let modalButtons='';
     if(st==='pending') modalButtons=`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`;
     if(String(selectedRow.status||'').trim()==='مقبول') modalButtons=`<button class="btn btn-primary" onclick="sendRequirements(${rowNumber},true)">إرسال ملف الإنهاء</button>`;
-    if(String(selectedRow.status||'').trim()==='بانتظار متطلبات الإنهاء') modalButtons=`<button class="btn btn-primary" onclick="finalizeOpportunity(${rowNumber},true)">اعتماد الإنهاء</button>`;
+    if(String(selectedRow.status||'').trim()==='بانتظار متطلبات الإنهاء') modalButtons=`<span class="badge waiting">بانتظار رفع الملف من المستفيد</span>`;
     $('#modalActions').innerHTML=modalButtons;
     $('#modalBackdrop').classList.add('show');
   }
@@ -287,22 +368,25 @@
     }catch(e){showToast(e.message)}finally{setLoading(false)}
   }
 
-  document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
+  document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentView='requests';$('#requestsPanel').style.display='block';$('#filesPanel').style.display='none';activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
+  $('#filesNav').addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));$('#filesNav').classList.add('active');currentView='files';$('#requestsPanel').style.display='none';$('#filesPanel').style.display='block';loadFiles();document.querySelector('#filesPanel').scrollIntoView({behavior:'smooth'});});
   $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
-  $('#reloadTop').addEventListener('click',()=>loadData()); $('#reloadSide').addEventListener('click',()=>loadData()); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
+  $('#filesSearch').addEventListener('input',renderFiles); $('#clearFilesSearch').addEventListener('click',()=>{$('#filesSearch').value='';renderFiles()}); $('#reloadFiles').addEventListener('click',()=>loadFiles());
+  $('#reloadTop').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#reloadSide').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
   $('#closeAccept').addEventListener('click',closeAcceptance); $('#cancelAccept').addEventListener('click',closeAcceptance); $('#confirmAccept').addEventListener('click',confirmAcceptance); $('#acceptBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAcceptance()});
 
   function startAutoRefresh(){
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = setInterval(()=>{
-      if(document.visibilityState === 'visible' && !requestInProgress) loadData({silent:true});
+      if(document.visibilityState === 'visible' && !requestInProgress){ loadData({silent:true}); loadFiles({silent:true}); }
     }, AUTO_REFRESH_MS);
   }
   document.addEventListener('visibilitychange',()=>{
-    if(document.visibilityState === 'visible') loadData({silent:true});
+    if(document.visibilityState === 'visible'){ loadData({silent:true}); loadFiles({silent:true}); }
   });
 
   loadData();
+  loadFiles({silent:true});
   startAutoRefresh();
 </script>
 </body>
