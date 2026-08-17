@@ -73,7 +73,7 @@
 
     <div class="content">
       <section class="hero">
-        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول تُدخل رابط التسجيل وتاريخ انتهاء الفرصة ليصل الرابط للمنسق مباشرة، ثم يتولى النظام متابعة الإنهاء تلقائياً.</p></div>
+        <div><h2>مرحباً بك في لوحة إدارة الفرص التطوعية</h2><p>تظهر هنا طلبات Google Forms مباشرة من Google Sheets. يمكنك قبول الطلب أو رفضه، وعند القبول تُدخل رابط التسجيل ليصل مباشرة إلى مقدم الطلب عبر البريد الإلكتروني.</p></div>
         <div class="hero-mark">✦</div>
       </section>
 
@@ -87,12 +87,12 @@
       <section class="panel" id="requestsPanel">
         <div class="panel-head">
           <h3 id="panelTitle">جميع الطلبات</h3>
-          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم منسق الفرصة أو اسم الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button></div>
+          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم مقدم الطلب أو اسم الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button></div>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>منسق الفرصة</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>رابط التسجيل</th><th>تاريخ الانتهاء</th><th>الإجراءات</th></tr></thead>
-            <tbody id="rowsBody"><tr><td colspan="9" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
+            <thead><tr><th>#</th><th>مقدم الطلب</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+            <tbody id="rowsBody"><tr><td colspan="7" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -113,7 +113,6 @@
     <div class="modal-head"><h3 style="margin:0;color:var(--ut-green)">اعتماد الفرصة وإرسال رابط التسجيل</h3><button class="btn btn-soft" id="closeAccept">إغلاق</button></div>
     <div class="modal-body">
       <div class="form-field"><label for="registrationUrl">رابط التسجيل في الفرصة</label><input type="url" id="registrationUrl" placeholder="https://..." autocomplete="off"><div class="hint">سيصل هذا الرابط للمنسق داخل رسالة القبول.</div></div>
-      <div class="form-field"><label for="opportunityEndDate">تاريخ انتهاء الفرصة</label><input type="date" id="opportunityEndDate"><div class="hint">بعد انقضاء هذا التاريخ سيرسل النظام ملف المتطلبات تلقائياً عند تفعيل الأتمتة وإضافة ملف Word.</div></div>
     </div>
     <div class="modal-actions"><button class="btn btn-soft" id="cancelAccept">إلغاء</button><button class="btn btn-primary" id="confirmAccept">قبول وإرسال الرابط</button></div>
   </div>
@@ -123,7 +122,7 @@
 
 <script>
   // ضع رابط Web App الخاص بـ Google Apps Script هنا بعد نشره.
-  const API_URL = 'https://script.google.com/macros/s/AKfycbyogwns9NsENPlduJmZPsQQYgv_s9-7gEp5jnV-Rw2679svk0krsra0ljR8Wbqm7xZo/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxNY_Vdtxo6eNgUpwLHshX-srybhiRYdOaaCd3hujlN10bEQGZEMaPAV1Tr_0Ni44XxEw/exec';
   let allRows = [];
   let activeFilter = 'all';
   let selectedRow = null;
@@ -174,7 +173,7 @@
     }catch(e){
       // لا نمسح البيانات القديمة إذا تعذر الاتصال مؤقتاً.
       if(!allRows.length && !silent){
-        $('#rowsBody').innerHTML=`<tr><td colspan="9" class="empty">${esc(e.message)}</td></tr>`;
+        $('#rowsBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
       }
       if(!silent) showToast(e.message);
       $('#lastSync').textContent = allRows.length ? 'تعذر التحديث مؤقتاً • ستتم المحاولة تلقائياً' : 'تعذر الاتصال بـ Apps Script';
@@ -197,18 +196,15 @@
 
   function renderRows(){
     const rows=filteredRows();
-    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="9" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
+    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
     $('#rowsBody').innerHTML=rows.map((r,i)=>{
       const st=normStatus(r.status);
       return `<tr>
         <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
         <td><span class="badge ${st}">${statusArabic(st)}</span></td>
-        <td>${st==='pending' ? `<input class="search" style="min-width:210px;width:100%" type="url" id="reg-${r.rowNumber}" value="${esc(r.registrationUrl||'')}" placeholder="https://...">` : (r.registrationUrl ? `<a href="${esc(r.registrationUrl)}" target="_blank">فتح الرابط</a>` : '—')}</td>
-        <td>${st==='pending' ? `<input class="search" style="min-width:145px;width:100%" type="date" id="end-${r.rowNumber}" value="${esc(r.endDate||'')}">` : esc(r.endDate||'—')}</td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
-          ${st==='pending'?`<button class="btn btn-primary" onclick="acceptFromRow(${r.rowNumber})">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
-          ${st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${r.rowNumber})">إنهاء الآن</button>`:''}
+          ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
         </div></td></tr>`;
     }).join('');
   }
@@ -218,7 +214,7 @@
     const pairs=Object.entries(selectedRow.fields||{});
     $('#detailGrid').innerHTML=pairs.map(([k,v])=>`<div class="detail"><b>${esc(k)}</b><span>${esc(v||'—')}</span></div>`).join('');
     const st=normStatus(selectedRow.status);
-    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:st==='accepted'?`<button class="btn btn-gold" onclick="completeOpportunity(${rowNumber},true)">إنهاء الآن وإرسال المتطلبات</button>`:'');
+    $('#modalActions').innerHTML=(st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`:'');
     $('#modalBackdrop').classList.add('show');
   }
   function closeModal(){ $('#modalBackdrop').classList.remove('show'); selectedRow=null; }
@@ -228,7 +224,6 @@
     acceptanceRowNumber=rowNumber;
     closeDetailsAfterAccept=closeDetails;
     $('#registrationUrl').value=row?.registrationUrl||'';
-    $('#opportunityEndDate').value=row?.endDate||'';
     $('#acceptBackdrop').classList.add('show');
     setTimeout(()=>$('#registrationUrl').focus(),100);
   }
@@ -239,31 +234,14 @@
     closeDetailsAfterAccept=false;
   }
 
-  async function acceptFromRow(rowNumber){
-    const registrationUrl = ($('#reg-'+rowNumber)?.value || '').trim();
-    const endDate = $('#end-'+rowNumber)?.value || '';
-    if(!registrationUrl){showToast('أدخل رابط التسجيل أولاً.'); $('#reg-'+rowNumber)?.focus(); return;}
-    if(!/^https?:\/\//i.test(registrationUrl)){showToast('رابط التسجيل يجب أن يبدأ بـ https:// أو http://'); $('#reg-'+rowNumber)?.focus(); return;}
-    if(!endDate){showToast('حدد تاريخ انتهاء الفرصة أولاً.'); $('#end-'+rowNumber)?.focus(); return;}
-    if(!confirm('هل تريد قبول الفرصة وإرسال رابط التسجيل للمنسق؟')) return;
-    setLoading(true);
-    try{
-      const d=await api('setStatus',{rowNumber,status:'مقبول',registrationUrl,endDate});
-      showToast(d.message||'تم قبول الفرصة وإرسال رابط التسجيل.');
-      await loadData({silent:true});
-    }catch(e){showToast(e.message)}finally{setLoading(false)}
-  }
-
   async function confirmAcceptance(){
     const rowNumber=acceptanceRowNumber;
     const registrationUrl=$('#registrationUrl').value.trim();
-    const endDate=$('#opportunityEndDate').value;
     if(!registrationUrl){showToast('أدخل رابط التسجيل أولاً.');return;}
     if(!/^https?:\/\//i.test(registrationUrl)){showToast('رابط التسجيل يجب أن يبدأ بـ https:// أو http://');return;}
-    if(!endDate){showToast('حدد تاريخ انتهاء الفرصة.');return;}
     setLoading(true);
     try{
-      const d=await api('setStatus',{rowNumber,status:'مقبول',registrationUrl,endDate});
+      const d=await api('setStatus',{rowNumber,status:'مقبول',registrationLink:registrationUrl});
       showToast(d.message||'تم قبول الفرصة.');
       closeAcceptance();
       if(closeDetailsAfterAccept) closeModal();
@@ -278,12 +256,7 @@
     try{ const d=await api('setStatus',{rowNumber,status}); showToast(d.message||'تم تحديث الطلب.'); if(close)closeModal(); await loadData({silent:true}); }
     catch(e){showToast(e.message)} finally{setLoading(false)}
   }
-  async function completeOpportunity(rowNumber,close=false){
-    if(!confirm('سيتم إنهاء الفرصة وإرسال متطلبات الإنهاء للمتقدم. هل تريد المتابعة؟')) return;
-    setLoading(true);
-    try{ const d=await api('complete',{rowNumber}); showToast(d.message||'تم إنهاء الفرصة.'); if(close)closeModal(); await loadData({silent:true}); }
-    catch(e){showToast(e.message)} finally{setLoading(false)}
-  }
+
 
   document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
   $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
