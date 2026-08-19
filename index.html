@@ -18,7 +18,7 @@
     .app{min-height:100vh;display:grid;grid-template-columns:270px 1fr}
     aside{background:linear-gradient(180deg,#006c43 0%,#005638 100%);color:white;padding:24px 18px;position:sticky;top:0;height:100vh;overflow:auto}
     .brand-side{display:flex;align-items:center;gap:12px;padding:8px 8px 24px;border-bottom:1px solid rgba(255,255,255,.13)}
-    .brand-side img{width:64px;height:64px;object-fit:contain;background:white;border-radius:14px;padding:5px}
+    .brand-side img{width:190px;height:76px;object-fit:contain;background:white;border-radius:14px;padding:5px}
     .brand-side h2{margin:0;font-size:18px;line-height:1.6}.brand-side small{opacity:.78}
     nav{display:grid;gap:8px;margin-top:24px}
     .nav-btn{border:0;background:transparent;color:#fff;text-align:right;padding:14px 15px;border-radius:14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between}
@@ -26,7 +26,7 @@
     .pill{background:white;color:var(--ut-green);padding:2px 8px;border-radius:999px;font-size:12px;font-weight:bold}
     main{min-width:0}
     header{background:#fff;border-bottom:1px solid var(--line);padding:18px 30px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
-    .title-wrap{display:flex;align-items:center;gap:14px}.title-wrap img{width:56px;height:56px;object-fit:contain}.title-wrap h1{font-size:22px;margin:0;color:var(--ut-green)}.title-wrap p{margin:4px 0 0;color:var(--muted);font-size:13px}
+    .title-wrap{display:flex;align-items:center;gap:14px}.title-wrap img{width:175px;height:70px;object-fit:contain}.title-wrap h1{font-size:22px;margin:0;color:var(--ut-green)}.title-wrap p{margin:4px 0 0;color:var(--muted);font-size:13px}
     .sync{display:flex;gap:10px;align-items:center}.sync span{font-size:12px;color:var(--muted)}
     .btn{border:0;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:bold}.btn-primary{background:var(--ut-green);color:white}.btn-soft{background:#edf6f1;color:var(--ut-green)}.btn-danger{background:#fff0f0;color:var(--red)}.btn-gold{background:#fff7d8;color:#7b5c00}
     .content{padding:28px;max-width:1500px;margin:auto}
@@ -49,7 +49,7 @@
 <div class="app">
   <aside>
     <div class="brand-side">
-      <img src="university-tabuk-logo.png" alt="شعار جامعة تبوك">
+      <img src="university-tabuk-logo.jpeg" alt="شعار جامعة تبوك">
       <div><h2>إدارة العمل التطوعي</h2><small>عمادة شؤون الطلاب</small></div>
     </div>
     <nav>
@@ -67,7 +67,7 @@
   <main>
     <header>
       <div class="title-wrap">
-        <img src="university-tabuk-logo.png" alt="شعار جامعة تبوك">
+        <img src="university-tabuk-logo.jpeg" alt="شعار جامعة تبوك">
         <div><h1>نظام إدارة العمل التطوعي</h1><p>مراجعة الطلبات وإدارة دورة الفرص التطوعية</p></div>
       </div>
       <div class="sync"><span id="lastSync">لم تتم المزامنة بعد</span><button class="btn btn-soft" id="reloadTop">تحديث</button></div>
@@ -106,6 +106,7 @@
             <input class="search" id="filesSearch" placeholder="ابحث بالاسم أو الفرصة أو البريد...">
             <button class="btn btn-soft" id="clearFilesSearch">مسح</button>
             <button class="btn btn-soft" id="reloadFiles">تحديث الملفات</button>
+            <button class="btn btn-soft" id="restoreHiddenFiles">استرجاع المخفية <span id="hiddenFilesCount">0</span></button>
           </div>
         </div>
         <div class="table-wrap">
@@ -197,6 +198,41 @@
     showToast('تم استرجاع الطلبات المخفية.');
   }
 
+  const HIDDEN_FILES_STORAGE_KEY = 'ut_volunteer_hidden_files_v1';
+  function fileKey(r){
+    return [r.rowNumber||'', r.timestamp||'', r.email||'', r.opportunity||'', r.name||'', r.fileUrl||''].join('|');
+  }
+  function getHiddenFileKeys(){
+    try { return JSON.parse(localStorage.getItem(HIDDEN_FILES_STORAGE_KEY) || '[]'); }
+    catch (_) { return []; }
+  }
+  function setHiddenFileKeys(keys){
+    localStorage.setItem(HIDDEN_FILES_STORAGE_KEY, JSON.stringify([...new Set(keys)]));
+    updateHiddenFilesCount();
+  }
+  function isHiddenFile(r){ return getHiddenFileKeys().includes(fileKey(r)); }
+  function visibleFileRows(){ return fileRows.filter(r=>!isHiddenFile(r)); }
+  function updateHiddenFilesCount(){
+    const n=getHiddenFileKeys().length;
+    const el=$('#hiddenFilesCount'); if(el) el.textContent=n;
+    const btn=$('#restoreHiddenFiles'); if(btn) btn.style.display=n?'inline-flex':'none';
+  }
+  function hideFileFromSite(rowNumber){
+    const r=fileRows.find(x=>x.rowNumber===rowNumber);
+    if(!r) return;
+    if(!confirm('هل تريد حذف هذا الملف من عرض الموقع فقط؟ سيبقى محفوظاً في Google Sheets وGoogle Drive.')) return;
+    const keys=getHiddenFileKeys(); keys.push(fileKey(r)); setHiddenFileKeys(keys);
+    renderFiles();
+    showToast('تم حذف الملف من عرض الموقع فقط.');
+  }
+  function restoreHiddenFiles(){
+    if(!getHiddenFileKeys().length) return;
+    if(!confirm('هل تريد استرجاع جميع ملفات الإنهاء المخفية إلى الموقع؟')) return;
+    localStorage.removeItem(HIDDEN_FILES_STORAGE_KEY);
+    updateHiddenFilesCount(); renderFiles();
+    showToast('تم استرجاع ملفات الإنهاء المخفية.');
+  }
+
   async function api(action, payload={}){
     if(API_URL.includes('PUT_YOUR')) throw new Error('يلزم وضع رابط Apps Script داخل API_URL أولاً.');
     const url = new URL(API_URL);
@@ -235,7 +271,8 @@
     try{
       const data = await filesApi('list');
       fileRows = Array.isArray(data.rows) ? data.rows : [];
-      $('#sideFiles').textContent = data.pendingCount ?? fileRows.filter(r=>String(r.status||'').trim()!=='تم إنهاء الفرصة').length;
+      updateHiddenFilesCount();
+      $('#sideFiles').textContent = visibleFileRows().filter(r=>String(r.status||'').trim()!=='تم إنهاء الفرصة').length;
       renderFiles();
     }catch(e){
       if(!silent) showToast(e.message);
@@ -245,7 +282,7 @@
 
   function renderFiles(){
     const q=($('#filesSearch')?.value||'').trim().toLowerCase();
-    const rows=fileRows.filter(r=>!q || [r.name,r.opportunity,r.email,r.timestamp,r.status].join(' ').toLowerCase().includes(q));
+    const rows=visibleFileRows().filter(r=>!q || [r.name,r.opportunity,r.email,r.timestamp,r.status].join(' ').toLowerCase().includes(q));
     if(!rows.length){ $('#filesBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد ملفات مرفوعة حالياً.</td></tr>'; return; }
     $('#filesBody').innerHTML=rows.map((r,i)=>{
       const done=String(r.status||'').trim()==='تم إنهاء الفرصة';
@@ -260,6 +297,7 @@
         <td><div class="actions">
           ${r.fileUrl?`<a class="btn btn-soft" href="${esc(r.fileUrl)}" target="_blank" rel="noopener">عرض الملف</a>`:''}
           ${!done?`<button class="btn btn-primary" onclick="finalizeUploadedFile(${r.rowNumber})">إنهاء الفرصة</button>`:''}
+          <button class="btn btn-danger" onclick="hideFileFromSite(${r.rowNumber})">حذف من العرض</button>
         </div></td>
       </tr>`;
     }).join('');
@@ -408,7 +446,7 @@
   document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentView='requests';$('#requestsPanel').style.display='block';$('#filesPanel').style.display='none';activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
   $('#filesNav').addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));$('#filesNav').classList.add('active');currentView='files';$('#requestsPanel').style.display='none';$('#filesPanel').style.display='block';loadFiles();document.querySelector('#filesPanel').scrollIntoView({behavior:'smooth'});});
   $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()}); $('#restoreHidden').addEventListener('click',restoreHiddenRequests); updateHiddenCount();
-  $('#filesSearch').addEventListener('input',renderFiles); $('#clearFilesSearch').addEventListener('click',()=>{$('#filesSearch').value='';renderFiles()}); $('#reloadFiles').addEventListener('click',()=>loadFiles());
+  $('#filesSearch').addEventListener('input',renderFiles); $('#clearFilesSearch').addEventListener('click',()=>{$('#filesSearch').value='';renderFiles()}); $('#reloadFiles').addEventListener('click',()=>loadFiles()); $('#restoreHiddenFiles').addEventListener('click',restoreHiddenFiles); updateHiddenFilesCount();
   $('#reloadTop').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#reloadSide').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
   $('#closeAccept').addEventListener('click',closeAcceptance); $('#cancelAccept').addEventListener('click',closeAcceptance); $('#confirmAccept').addEventListener('click',confirmAcceptance); $('#acceptBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAcceptance()});
 
