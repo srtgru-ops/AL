@@ -89,7 +89,7 @@
       <section class="panel" id="requestsPanel">
         <div class="panel-head">
           <h3 id="panelTitle">جميع الطلبات</h3>
-          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم مقدم الطلب أو اسم الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button></div>
+          <div class="filters"><input class="search" id="searchInput" placeholder="ابحث باسم مقدم الطلب أو اسم الفرصة أو البريد..."><button class="btn btn-soft" id="clearSearch">مسح</button><button class="btn btn-soft" id="restoreHidden">استرجاع المخفية <span id="hiddenCount">0</span></button></div>
         </div>
         <div class="table-wrap">
           <table>
@@ -161,6 +161,41 @@
 
   function showToast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3200); }
   function setLoading(on){ document.body.classList.toggle('loading',on); }
+
+  const HIDDEN_STORAGE_KEY = 'ut_volunteer_hidden_requests_v1';
+  function requestKey(r){
+    return [r.rowNumber||'', r.timestamp||'', r.email||'', r.opportunityName||'', r.coordinatorName||''].join('|');
+  }
+  function getHiddenKeys(){
+    try { return JSON.parse(localStorage.getItem(HIDDEN_STORAGE_KEY) || '[]'); }
+    catch (_) { return []; }
+  }
+  function setHiddenKeys(keys){
+    localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify([...new Set(keys)]));
+    updateHiddenCount();
+  }
+  function isHiddenRequest(r){ return getHiddenKeys().includes(requestKey(r)); }
+  function visibleRowsAll(){ return allRows.filter(r=>!isHiddenRequest(r)); }
+  function updateHiddenCount(){
+    const n=getHiddenKeys().length;
+    const el=$('#hiddenCount'); if(el) el.textContent=n;
+    const btn=$('#restoreHidden'); if(btn) btn.style.display=n?'inline-flex':'none';
+  }
+  function hideRequestFromSite(rowNumber){
+    const r=allRows.find(x=>x.rowNumber===rowNumber);
+    if(!r) return;
+    if(!confirm('هل تريد حذف هذا الطلب من عرض الموقع فقط؟ سيبقى محفوظاً في Google Sheets.')) return;
+    const keys=getHiddenKeys(); keys.push(requestKey(r)); setHiddenKeys(keys);
+    updateStats(); renderRows();
+    showToast('تم حذف الطلب من عرض الموقع فقط.');
+  }
+  function restoreHiddenRequests(){
+    if(!getHiddenKeys().length) return;
+    if(!confirm('هل تريد استرجاع جميع الطلبات المخفية إلى الموقع؟')) return;
+    localStorage.removeItem(HIDDEN_STORAGE_KEY);
+    updateHiddenCount(); updateStats(); renderRows();
+    showToast('تم استرجاع الطلبات المخفية.');
+  }
 
   async function api(action, payload={}){
     if(API_URL.includes('PUT_YOUR')) throw new Error('يلزم وضع رابط Apps Script داخل API_URL أولاً.');
@@ -267,13 +302,15 @@
 
   function updateStats(){
     const c={pending:0,accepted:0,waiting:0,rejected:0,completed:0};
-    allRows.forEach(r=>c[normStatus(r.status)]++);
-    $('#totalCount').textContent=allRows.length; $('#pendingCount').textContent=c.pending; $('#acceptedCount').textContent=c.accepted; $('#rejectedCount').textContent=c.rejected; $('#sidePending').textContent=c.pending;
+    const visible=visibleRowsAll();
+    visible.forEach(r=>c[normStatus(r.status)]++);
+    $('#totalCount').textContent=visible.length; $('#pendingCount').textContent=c.pending; $('#acceptedCount').textContent=c.accepted; $('#rejectedCount').textContent=c.rejected; $('#sidePending').textContent=c.pending;
+    updateHiddenCount();
   }
 
   function filteredRows(){
     const q=$('#searchInput').value.trim().toLowerCase();
-    return allRows.filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
+    return visibleRowsAll().filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
   }
 
   function renderRows(){
@@ -285,7 +322,7 @@
         <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
         <td><span class="badge ${st}">${esc(statusArabic(st,r.status))}</span></td>
         <td><div class="actions">
-          <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button>
+          <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button><button class="btn btn-danger" onclick="hideRequestFromSite(${r.rowNumber})">حذف من العرض</button>
           ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
           ${String(r.status||'').trim()==='مقبول'?`<button class="btn btn-primary" onclick="sendRequirements(${r.rowNumber})">إرسال ملف الإنهاء</button>`:''}
           ${String(r.status||'').trim()==='بانتظار متطلبات الإنهاء'?`<span class="badge waiting">بانتظار رفع الملف</span>`:''}
@@ -370,7 +407,7 @@
 
   document.querySelectorAll('.nav-btn[data-filter]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentView='requests';$('#requestsPanel').style.display='block';$('#filesPanel').style.display='none';activeFilter=b.dataset.filter;$('#panelTitle').textContent=b.textContent.replace(/\d+/g,'').trim();renderRows();document.querySelector('#requestsPanel').scrollIntoView({behavior:'smooth'});}));
   $('#filesNav').addEventListener('click',()=>{document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));$('#filesNav').classList.add('active');currentView='files';$('#requestsPanel').style.display='none';$('#filesPanel').style.display='block';loadFiles();document.querySelector('#filesPanel').scrollIntoView({behavior:'smooth'});});
-  $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()});
+  $('#searchInput').addEventListener('input',renderRows); $('#clearSearch').addEventListener('click',()=>{$('#searchInput').value='';renderRows()}); $('#restoreHidden').addEventListener('click',restoreHiddenRequests); updateHiddenCount();
   $('#filesSearch').addEventListener('input',renderFiles); $('#clearFilesSearch').addEventListener('click',()=>{$('#filesSearch').value='';renderFiles()}); $('#reloadFiles').addEventListener('click',()=>loadFiles());
   $('#reloadTop').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#reloadSide').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
   $('#closeAccept').addEventListener('click',closeAcceptance); $('#cancelAccept').addEventListener('click',closeAcceptance); $('#confirmAccept').addEventListener('click',confirmAcceptance); $('#acceptBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAcceptance()});
