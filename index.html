@@ -40,7 +40,7 @@
     .footer-note{margin:18px 4px;color:var(--muted);font-size:12px;text-align:center}
     .toast{position:fixed;left:24px;bottom:24px;background:#19241e;color:white;padding:14px 18px;border-radius:14px;box-shadow:var(--shadow);display:none;z-index:50}.toast.show{display:block}
     .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.38);display:none;align-items:center;justify-content:center;padding:20px;z-index:40}.modal-backdrop.show{display:flex}.modal{background:white;border-radius:22px;max-width:760px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.2)}.modal-head{padding:20px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.modal-body{padding:22px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.detail{background:#f8faf9;border:1px solid var(--line);border-radius:14px;padding:13px}.detail b{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.modal-actions{padding:18px 22px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
-    .form-field{display:grid;gap:7px;margin-bottom:15px}.form-field label{font-size:13px;font-weight:bold;color:#46514b}.form-field input{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 13px;outline:none;background:#fafcfb}.form-field input:focus{border-color:#8ab9a1;box-shadow:0 0 0 3px #e8f4ed}.hint{font-size:12px;color:var(--muted);line-height:1.7}.loading{opacity:.55;pointer-events:none}
+    .form-field{display:grid;gap:7px;margin-bottom:15px}.form-field label{font-size:13px;font-weight:bold;color:#46514b}.form-field input,.form-field textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px 13px;outline:none;background:#fafcfb}.form-field input:focus,.form-field textarea:focus{border-color:#8ab9a1;box-shadow:0 0 0 3px #e8f4ed}.form-field textarea{min-height:130px;resize:vertical;line-height:1.8}.hint{font-size:12px;color:var(--muted);line-height:1.7}.loading{opacity:.55;pointer-events:none}
     @media(max-width:1000px){.app{grid-template-columns:1fr}aside{height:auto;position:static}nav{grid-template-columns:repeat(3,1fr)}.brand-side{justify-content:center}.stats{grid-template-columns:1fr 1fr}header{position:static}}
     @media(max-width:650px){.content{padding:16px}header{padding:14px 16px}.title-wrap p{display:none}.stats{grid-template-columns:1fr}.hero{align-items:flex-start}.hero-mark{display:none}.detail-grid{grid-template-columns:1fr}nav{grid-template-columns:1fr 1fr}.search{min-width:100%;width:100%}}
   </style>
@@ -138,6 +138,20 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="rejectBackdrop">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-head"><h3 style="margin:0;color:var(--red)">رفض الطلب</h3><button class="btn btn-soft" id="closeReject">إغلاق</button></div>
+    <div class="modal-body">
+      <div class="form-field">
+        <label for="rejectionReason">سبب الرفض</label>
+        <textarea id="rejectionReason" placeholder="اكتب سبب رفض الفرصة هنا..."></textarea>
+        <div class="hint">سيتم إرسال سبب الرفض إلى مقدم الطلب عبر البريد الإلكتروني.</div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-soft" id="cancelReject">إلغاء</button><button class="btn btn-danger" id="confirmReject">تأكيد الرفض وإرسال السبب</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -151,6 +165,8 @@
   let selectedRow = null;
   let acceptanceRowNumber = null;
   let closeDetailsAfterAccept = false;
+  let rejectionRowNumber = null;
+  let closeDetailsAfterReject = false;
   const AUTO_REFRESH_MS = 20000;
   let autoRefreshTimer = null;
   let requestInProgress = false;
@@ -361,7 +377,7 @@
         <td><span class="badge ${st}">${esc(statusArabic(st,r.status))}</span></td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button><button class="btn btn-danger" onclick="hideRequestFromSite(${r.rowNumber})">حذف من العرض</button>
-          ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="changeStatus(${r.rowNumber},'مرفوض')">رفض</button>`:''}
+          ${st==='pending'?`<button class="btn btn-primary" onclick="openAcceptance(${r.rowNumber},false)">قبول</button><button class="btn btn-danger" onclick="openRejection(${r.rowNumber},false)">رفض</button>`:''}
           ${String(r.status||'').trim()==='مقبول'?`<button class="btn btn-primary" onclick="sendRequirements(${r.rowNumber})">إرسال ملف الإنهاء</button>`:''}
           ${String(r.status||'').trim()==='بانتظار متطلبات الإنهاء'?`<span class="badge waiting">بانتظار رفع الملف</span>`:''}
         </div></td></tr>`;
@@ -374,7 +390,7 @@
     $('#detailGrid').innerHTML=pairs.map(([k,v])=>`<div class="detail"><b>${esc(k)}</b><span>${esc(v||'—')}</span></div>`).join('');
     const st=normStatus(selectedRow.status);
     let modalButtons='';
-    if(st==='pending') modalButtons=`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="changeStatus(${rowNumber},'مرفوض',true)">رفض</button>`;
+    if(st==='pending') modalButtons=`<button class="btn btn-primary" onclick="openAcceptance(${rowNumber},true)">قبول وإرسال رابط التسجيل</button><button class="btn btn-danger" onclick="openRejection(${rowNumber},true)">رفض</button>`;
     if(String(selectedRow.status||'').trim()==='مقبول') modalButtons=`<button class="btn btn-primary" onclick="sendRequirements(${rowNumber},true)">إرسال ملف الإنهاء</button>`;
     if(String(selectedRow.status||'').trim()==='بانتظار متطلبات الإنهاء') modalButtons=`<span class="badge waiting">بانتظار رفع الملف من المستفيد</span>`;
     $('#modalActions').innerHTML=modalButtons;
@@ -408,6 +424,38 @@
       showToast(d.message||'تم قبول الفرصة.');
       closeAcceptance();
       if(closeDetailsAfterAccept) closeModal();
+      await loadData({silent:true});
+    }catch(e){showToast(e.message)}finally{setLoading(false)}
+  }
+
+  function openRejection(rowNumber,closeDetails=false){
+    rejectionRowNumber=rowNumber;
+    closeDetailsAfterReject=closeDetails;
+    $('#rejectionReason').value='';
+    $('#rejectBackdrop').classList.add('show');
+    setTimeout(()=>$('#rejectionReason').focus(),100);
+  }
+
+  function closeRejection(){
+    $('#rejectBackdrop').classList.remove('show');
+    rejectionRowNumber=null;
+    closeDetailsAfterReject=false;
+    $('#rejectionReason').value='';
+  }
+
+  async function confirmRejection(){
+    const rowNumber=rejectionRowNumber;
+    const rejectionReason=$('#rejectionReason').value.trim();
+    if(!rowNumber){showToast('تعذر تحديد الطلب.');return;}
+    if(!rejectionReason){showToast('اكتب سبب الرفض أولاً.');$('#rejectionReason').focus();return;}
+    if(!confirm('هل تريد رفض الطلب وإرسال سبب الرفض إلى مقدم الطلب؟')) return;
+    setLoading(true);
+    try{
+      const d=await api('setStatus',{rowNumber,status:'مرفوض',rejectionReason});
+      showToast(d.message||'تم رفض الطلب وإرسال سبب الرفض.');
+      const shouldCloseDetails=closeDetailsAfterReject;
+      closeRejection();
+      if(shouldCloseDetails) closeModal();
       await loadData({silent:true});
     }catch(e){showToast(e.message)}finally{setLoading(false)}
   }
@@ -449,6 +497,7 @@
   $('#filesSearch').addEventListener('input',renderFiles); $('#clearFilesSearch').addEventListener('click',()=>{$('#filesSearch').value='';renderFiles()}); $('#reloadFiles').addEventListener('click',()=>loadFiles()); $('#restoreHiddenFiles').addEventListener('click',restoreHiddenFiles); updateHiddenFilesCount();
   $('#reloadTop').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#reloadSide').addEventListener('click',()=>{loadData();loadFiles({silent:true});}); $('#closeModal').addEventListener('click',closeModal); $('#modalBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal()});
   $('#closeAccept').addEventListener('click',closeAcceptance); $('#cancelAccept').addEventListener('click',closeAcceptance); $('#confirmAccept').addEventListener('click',confirmAcceptance); $('#acceptBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAcceptance()});
+  $('#closeReject').addEventListener('click',closeRejection); $('#cancelReject').addEventListener('click',closeRejection); $('#confirmReject').addEventListener('click',confirmRejection); $('#rejectBackdrop').addEventListener('click',e=>{if(e.target===e.currentTarget)closeRejection()});
 
   function startAutoRefresh(){
     clearInterval(autoRefreshTimer);
