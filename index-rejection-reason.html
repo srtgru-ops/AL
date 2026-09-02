@@ -93,8 +93,8 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>#</th><th>مقدم الطلب</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
-            <tbody id="rowsBody"><tr><td colspan="7" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
+            <thead><tr><th>#</th><th>مقدم الطلب</th><th>اسم الفرصة</th><th>البريد الإلكتروني</th><th>تاريخ التقديم</th><th>تاريخ نهاية الفرصة</th><th>الحالة</th><th>الإجراءات</th></tr></thead>
+            <tbody id="rowsBody"><tr><td colspan="8" class="empty">جارٍ تحميل البيانات...</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -288,7 +288,7 @@
       renderFiles();
     }catch(e){
       if(!silent) showToast(e.message);
-      if(!fileRows.length) $('#filesBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+      if(!fileRows.length) $('#filesBody').innerHTML=`<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`;
     }finally{ if(!silent) setLoading(false); }
   }
 
@@ -340,7 +340,7 @@
     }catch(e){
       // لا نمسح البيانات القديمة إذا تعذر الاتصال مؤقتاً.
       if(!allRows.length && !silent){
-        $('#rowsBody').innerHTML=`<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`;
+        $('#rowsBody').innerHTML=`<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`;
       }
       if(!silent) showToast(e.message);
       $('#lastSync').textContent = allRows.length ? 'تعذر التحديث مؤقتاً • ستتم المحاولة تلقائياً' : 'تعذر الاتصال بـ Apps Script';
@@ -358,18 +358,37 @@
     updateHiddenCount();
   }
 
+  function getOpportunityEndDate(r){
+    const entries=Object.entries(r.fields||{});
+
+    const exact=entries.find(([k,v]) =>
+      String(k||'').trim().startsWith('تاريخ نهاية الفرصة') &&
+      String(v||'').trim()
+    );
+    if(exact) return String(exact[1]).trim();
+
+    const fallback=entries.find(([k,v]) =>
+      /تاريخ.*نهاية.*الفرصة/.test(String(k||'')) &&
+      String(v||'').trim()
+    );
+    return fallback ? String(fallback[1]).trim() : '';
+  }
+
   function filteredRows(){
     const q=$('#searchInput').value.trim().toLowerCase();
-    return visibleRowsAll().filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)));
+    return visibleRowsAll()
+      .filter(r => (activeFilter==='all' || normStatus(r.status)===activeFilter) && (!q || [r.coordinatorName,r.opportunityName,r.email,...Object.values(r.fields||{})].join(' ').toLowerCase().includes(q)))
+      .sort((a,b)=>(Number(a.rowNumber)||0)-(Number(b.rowNumber)||0));
   }
 
   function renderRows(){
     const rows=filteredRows();
-    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="7" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
+    if(!rows.length){$('#rowsBody').innerHTML='<tr><td colspan="8" class="empty">لا توجد طلبات مطابقة.</td></tr>';return;}
     $('#rowsBody').innerHTML=rows.map((r,i)=>{
       const st=normStatus(r.status);
       return `<tr>
         <td>${i+1}</td><td><b>${esc(r.coordinatorName||'—')}</b></td><td>${esc(r.opportunityName||'—')}</td><td>${esc(r.email||'—')}</td><td>${esc(r.timestamp||'—')}</td>
+        <td>${esc(getOpportunityEndDate(r)||'—')}</td>
         <td><span class="badge ${st}">${esc(statusArabic(st,r.status))}</span></td>
         <td><div class="actions">
           <button class="btn btn-soft" onclick="openDetails(${r.rowNumber})">عرض</button><button class="btn btn-danger" onclick="hideRequestFromSite(${r.rowNumber})">حذف من العرض</button>
